@@ -1,0 +1,178 @@
+<?php 
+
+/**
+ * 
+ * This module is where you need to write your custom importer.
+ * The info file includes a css file on every page
+ * 
+ * There is a menu hook below which creates a page http://drupalinterview.local/store_locator/import
+ * There is a form defined already with a box to enter the CSV data
+ * 
+ * You should write your submit handler in the store_locator_import_submit function
+ * 
+ */
+
+/**
+ * Implements hook_menu
+ *
+ * Setting up our menu options
+ * @return array
+ *
+ */
+function store_locator_menu()
+{
+    $items['store_locator/import'] = array(
+        'title' => 'Import Stores',
+        'description' => 'Import Stores in to the system',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('store_locator_import'),
+        'access callback' => TRUE,
+    );
+    
+    $items['store_locator/list'] = array(
+        'title' => 'List Stores',
+        'description' => 'View all stores',
+        'page callback' => 'store_locator_view_all',
+        'access callback' => TRUE,
+    );
+    
+    $items['store_locator/store/%'] = array(
+        'title' => 'Store Details',
+        'description' => 'View a single store',
+        'page callback' => 'store_locator_view_store',
+        'page arguments' => array(2),
+        'access callback' => TRUE,
+    );
+    
+    return $items;
+}
+
+/**
+ * This function is where your form is built
+ * 
+ * @param array $form
+ * @param array $form_state
+ */
+function store_locator_import($form, &$form_state)
+{
+    $form['notes'] = array(
+        '#type' => 'markup',
+        '#markup' => '<h2>Paste your CSV data in to the text area below</h2>',
+    );
+    $form['csv_data'] = array(
+        '#title' => t("CSV Data"),
+        '#type' => 'textarea',
+        '#description' => 'Paste your CSV data in here.',
+    );
+    
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Update'),
+    );
+    
+    return $form;
+}
+
+/**
+ * This is the function that will process the data submitted in the form 
+ * Process your import in here
+ * 
+ * @param array $form
+ * @param array $form_state
+ */
+function store_locator_import_submit($form, &$form_state)
+{
+	global $user;
+    //the submitted form data will be in here
+   // dpm($form_state);
+    //The CSV data will be in $form_state['values']['csv_data']
+  //  dpm($form_state['values']['csv_data']);
+  $csv_data = $form_state['values']['csv_data'];
+    
+    //HINT: Use str-getcsv or fgetcsv to parse the string in to an array
+    //http://php.net/manual/en/function.str-getcsv.php http://php.net/manual/en/function.fgetcsv.php
+    
+	    $row = str_getcsv($csv_data, "\n");
+	    $length = count($row);
+	    $header = null;
+	   	for($i=0;$i<$length;$i++) {
+		
+			if(!$header){
+				$header = str_getcsv($row[$i], ",");
+				}
+			else{
+				$data_imports[] = array_combine($header, str_getcsv($row[$i], ","));
+				}
+		}
+		  
+		//dpm($data_imports);  
+		foreach($data_imports as $import) {
+			$node = new stdClass();
+			$node->title = iconv("utf-8", "utf-8//ignore", $import['Store Name']);
+			
+			$node->type = "store";
+			$node->field_address['und'][0]['value'] = $import['Address'];
+			$node->field_phone_number['und'][0]['value'] = $import['Phone Number'];
+			$node->field_store_manager['und'][0]['value'] = $import['Manager Name'];
+			$node->field_store_type['und'][0]['value'] = $import['Store Type'];
+			if(!$import['Latitude']) {
+				$coords = getCoordinates($import['Address']);
+				$node->field_latitude['und'][0]['value'] = $coords[0];
+				$node->field_longitude['und'][0]['value'] = $coords[1];
+			}
+			else {
+				$node->field_latitude['und'][0]['value'] = $import['Latitude'];
+				$node->field_longitude['und'][0]['value'] = $import['Longitude'];
+			}
+			
+		   
+		    $node->language = LANGUAGE_NONE;
+		    node_object_prepare($node);
+		
+			$node->uid = $user->uid;
+			$node->status = 1;    // Published
+			$node->promote = 0;   // Not promoted to the front page
+			$node->comment = 1;   // Comments not published
+			$node = node_submit($node);
+			node_save($node);
+		}
+}
+function getCoordinates($address){
+    $address = urlencode($address);
+    $url = "http://maps.google.com/maps/api/geocode/json?sensor=false&address=" . $address;
+    $response = file_get_contents($url);
+    $json = json_decode($response,true);
+   // dpm($json);
+    $lat = $json['results'][0]['geometry']['location']['lat'];
+    $lng = $json['results'][0]['geometry']['location']['lng'];
+ 
+    return array($lat, $lng);
+}
+
+
+
+/**
+ * Functions for the Non Drupal task below
+ */
+
+
+
+/*
+ * Do your store lookup in this function and just return the HTML
+ * Access this function by visiting /store_locator/list
+ * Create links to /store_locator/store/{id} for the individual store pages
+ */
+function store_locator_view_all()
+{
+    $html = 'Your HTML Here.';
+    return $html;
+}
+
+/*
+ * The store ID is passed straight in to this function
+ */
+function store_locator_view_store($storeId)
+{
+    $html = 'The Store ID is ' . $storeId;
+    return $html;
+}
